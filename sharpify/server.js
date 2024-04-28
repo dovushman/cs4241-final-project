@@ -43,7 +43,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-const upload = multer({ dest: 'uploads/' });
+// const upload = multer({ dest: 'uploads/' });
+const upload = multer();
 
 
 app.use(express.static(path.join(__dirname, 'build')));
@@ -141,53 +142,50 @@ app.post("/register", async (request, response) => {
 
 const uuid = require('uuid');
 let uploadedImage;
+
 app.post("/upload", upload.single('image'), async (request, response) => {
-    console.log(request.file.path);
-    const tempPath = request.file.path;
+    if (!request.file) {
+        return response.status(400).json({ message: 'No file uploaded' });
+    }
+
     const uniqueId = uuid.v4();
-    const targetPath = path.join(__dirname, `./uploads/${uniqueId}_uploadedImage.jpg`);
-    fs.rename(tempPath, targetPath, async err => {
-        if (err) {
-            console.log("error")
-        }
-        else {
-            console.log("uploaded")
-            const file = await bucket.upload(targetPath, {
-                gzip: true,
-                public: true,
-                metadata: {
-                    cacheControl: 'public, max-age=31536000',
-                },
-            });
+    const filename = `${uniqueId}_uploadedImage.jpg`;
 
-            console.log(`${targetPath} uploaded to Firebase Storage.`);
+    // Create a promise that resolves when the file is finished uploading
+    const uploadPromise = new Promise((resolve, reject) => {
+        const file = bucket.file(filename).createWriteStream();
 
-            const options = {
-                version: 'v4',
-                action: 'read',
-                expires: Date.now() + 15 * 60 * 1000, 
-            };
-            const url = `https://storage.googleapis.com/${bucket.name}/${file[0].name}`;
+        file.on('error', reject);
+        file.on('finish', resolve);
 
-            const imageDocument = {
-                filename: request.file.filename,
-                path: request.file.path,
-                url: url, 
-                uploadDate: new Date(),
-                userId: request.cookies.userId 
-            };
+        file.write(request.file.buffer);
+        file.end();
+    });
 
-            try {
-                const result = await images.insertOne(imageDocument);
+    try {
+        // Wait for the file to finish uploading
+        await uploadPromise;
 
-                response.json({ message: 'File uploaded successfully', id: result.insertedId });
-            } catch (error) {
-                console.error(error);
-                response.status(500).json({ message: 'Error uploading file' });
-            }
-        }
-    })
-})
+        console.log(`${filename} uploaded to Firebase Storage.`);
+
+        const url = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+
+        const imageDocument = {
+            filename: request.file.originalname,
+            path: url,
+            url: url, 
+            uploadDate: new Date(),
+            userId: request.cookies.userId 
+        };
+
+        const result = await images.insertOne(imageDocument);
+    
+        response.json({ message: 'File uploaded successfully', id: result.insertedId });
+    } catch (error) {
+        console.error(error);
+        response.status(500).json({ message: 'Error uploading file' });
+    }
+});
 
 
 app.post("/enhance", async (request, response) => {
@@ -223,6 +221,8 @@ app.post("/enhance", async (request, response) => {
     }});
 
 
+    const { ObjectId } = require('mongodb');
+
 app.get('/retrieveImages', async (request, response) => {
     const userId = request.cookies.userId;
 
@@ -238,21 +238,35 @@ const {Storage} = require('@google-cloud/storage');
 const storage = new Storage();
 
 
-app.get('/getImage/:imageId', async (request, response) => {
-    const imageId = request.params.imageId;
+// app.get('/getImage/:imageId', async (request, response) => {
+//     const imageId = request.params.imageId;
 
-    const bucket = storage.bucket('sharpify-2c8fc.appspot.com');
-    const file = bucket.file(imageId);
+//     const bucket = storage.bucket('sharpify-2c8fc.appspot.com');
+//     const file = bucket.file(imageId);
 
-    const readStream = file.createReadStream();
+//     const readStream = file.createReadStream();
 
-    readStream.on('error', (err) => {
-        response.status(500).send(err);
-    });
+//     readStream.on('error', (err) => {
+//         response.status(500).send(err);
+//     });
 
-    response.set('Content-Type', 'image/jpeg');
+//     response.set('Content-Type', 'image/jpeg');
 
-    readStream.pipe(response);
+//     readStream.pipe(response);
+// });
+app.get('/getImage/:imageId', async (req, res) => {
+    const { imageId } = req.params;
+
+    // Fetch the image document from MongoDB using the imageId
+    const imageDoc = await images.findOne({ _id: new ObjectId(imageId) });
+
+    if (!imageDoc) {
+        res.status(404).send('Image not found');
+        return;
+    }
+
+    // Send the Firebase URL as the response
+    res.json({ url: imageDoc.url });
 });
 
 

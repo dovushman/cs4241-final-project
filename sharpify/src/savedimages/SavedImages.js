@@ -21,6 +21,24 @@ import './SavedImages.css';
 //     }, []);
 
 
+function ImageWithFetch({ imageId }) {
+    const [imageUrl, setImageUrl] = useState(null);
+
+    useEffect(() => {
+        console.log('Fetching image with ID:', imageId); // Add this line
+        fetch(`http://localhost:3000/getImage/${imageId}`)
+            .then(response => response.json())
+            .then(data => {
+                setImageUrl(data.url);
+            });
+    }, [imageId]);
+
+    if (!imageUrl) {
+        return null;
+    }
+
+    return <Image src={imageUrl} thumbnail />;
+}
 
 
 
@@ -28,23 +46,19 @@ function SavedImages(props) {
     const [images, setImages] = useState([]);
 
     useEffect(() => {
-        // Fetch the images from your server
         fetch('retrieveImages', {
-            credentials: 'include' // Include cookies in the request
+            credentials: 'include' 
         })
             .then(response => response.json())
             .then(data => {
-                // Log the fetched images
                 console.log(data);
 
-                // Update the state with the fetched images
                 setImages(data);
             })
             .catch(error => console.error('Error:', error));
     }, []);
     
     const handleDownload = (imageSrc, filename) => {
-        // Extract the image ID from the imageSrc URL
         const imageId = imageSrc.split('/').pop();
     
         fetch(`http://localhost:3000/getImage/${imageId}`)
@@ -62,22 +76,40 @@ function SavedImages(props) {
             .catch(() => alert('Something went wrong! We couldn\'t download the file.'));
     };
 
-    return (
-        <Container style={{ marginTop: '4rem' }}>
-            <Row>
-                {images.map((image, index) => (
-                    <Col key={index} xs={6} md={4}>
-                        <Image src={image.url} thumbnail />
-                        <div className="image-overlay">
-                            <button onClick={() => handleDownload(image.url, image.filename)}>
-                                <FontAwesomeIcon icon={faCloudDownloadAlt} />
-                            </button>
-                        </div>
-                    </Col>
-                ))}
-            </Row>
-        </Container>
-    );
+//     return (
+//         <Container style={{ marginTop: '4rem' }}>
+//             <Row>
+//                 {images.map((image, index) => (
+//                     <Col key={index} xs={6} md={4}>
+//                         {/* <Image src={image.url} thumbnail /> */}
+//                         <Image src={`http://localhost:3000/getImage/${image._id}`} thumbnail />\
+//                         <div className="image-overlay">
+//                             <button onClick={() => handleDownload(image.url, image.filename)}>
+//                                 <FontAwesomeIcon icon={faCloudDownloadAlt} />
+//                             </button>
+//                         </div>
+//                     </Col>
+//                 ))}
+//             </Row>
+//         </Container>
+//     );
+// }
+return (
+    <Container style={{ marginTop: '4rem' }}>
+        <Row>
+            {images.map((image, index) => (
+                <Col key={index} xs={6} md={4}>
+                    <ImageWithFetch imageId={image._id} />
+                    <div className="image-overlay">
+                        <button onClick={() => handleDownload(image.url, image.filename)}>
+                            <FontAwesomeIcon icon={faCloudDownloadAlt} />
+                        </button>
+                    </div>
+                </Col>
+            ))}
+        </Row>
+    </Container>
+);
 }
 
 export default SavedImages;
